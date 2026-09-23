@@ -23,22 +23,38 @@ import {
   RefreshIcon,
   SettingsIcon,
   SpinnerIcon,
+  TerminalIcon,
   VercelLogoIcon,
 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
 
-export type ChatView = 'preview' | 'code'
+export type ChatView = 'preview' | 'terminal' | 'code'
 
 export function ChatHeader({
   chatId,
   title,
   view,
   onViewChange,
+  previewPath,
+  onPreviewInput,
+  onPreviewNavigate,
+  onPreviewRefresh,
+  onPreviewOpenNewTab,
+  canGoBack,
+  canGoForward,
 }: {
   chatId: string
   title: string
   view: ChatView
   onViewChange: (view: ChatView) => void
+  previewPath: string
+  onPreviewInput: (path: string) => void
+  onPreviewNavigate: (value: string) => void
+  onPreviewRefresh: () => void
+  onPreviewOpenNewTab: () => void
+  canGoBack: boolean
+  canGoForward: boolean
 }) {
   const router = useRouter()
   const deployChat = useDeployChat(`/api/chats/${encodeURIComponent(chatId)}/deploy`)
@@ -107,33 +123,44 @@ export function ChatHeader({
 
       <div className="hidden h-full min-w-0 flex-1 items-center justify-between gap-3 px-3 md:flex">
         <div className="flex shrink-0 items-center rounded-md bg-muted p-0.5">
-          <Button
-            aria-label="Preview"
-            aria-pressed={view === 'preview'}
-            className={cn('size-6 rounded-sm p-0', view === 'preview' && 'bg-background shadow-xs')}
-            onClick={() => onViewChange('preview')}
-            size="icon-xs"
-            variant="ghost"
-          >
-            <EyeIcon className="size-3.5" />
-          </Button>
-          <Button
-            aria-label="Code"
-            aria-pressed={view === 'code'}
-            className={cn('size-6 rounded-sm p-0', view === 'code' && 'bg-background shadow-xs')}
-            onClick={() => onViewChange('code')}
-            size="icon-xs"
-            variant="ghost"
-          >
-            <CodeIcon className="size-3.5" />
-          </Button>
-        </div>
+           <Button
+             aria-label="Preview"
+             aria-pressed={view === 'preview'}
+             className={cn('size-6 rounded-sm p-0', view === 'preview' && 'bg-background shadow-xs')}
+             onClick={() => onViewChange('preview')}
+             size="icon-xs"
+             variant="ghost"
+           >
+             <EyeIcon className="size-3.5" />
+           </Button>
+           <Button
+             aria-label="Terminal"
+             aria-pressed={view === 'terminal'}
+             className={cn('size-6 rounded-sm p-0', view === 'terminal' && 'bg-background shadow-xs')}
+             onClick={() => onViewChange('terminal')}
+             size="icon-xs"
+             variant="ghost"
+           >
+             <TerminalIcon className="size-3.5" />
+           </Button>
+           <Button
+             aria-label="Code"
+             aria-pressed={view === 'code'}
+             className={cn('size-6 rounded-sm p-0', view === 'code' && 'bg-background shadow-xs')}
+             onClick={() => onViewChange('code')}
+             size="icon-xs"
+             variant="ghost"
+           >
+             <CodeIcon className="size-3.5" />
+           </Button>
+         </div>
 
         <div className="hidden h-7 min-w-[150px] max-w-[420px] flex-1 items-center rounded-md border border-border px-0.5 lg:flex">
           <Button
             aria-label="Back"
             className="size-6 text-muted-foreground"
-            disabled
+            disabled={!canGoBack}
+            onClick={() => onPreviewNavigate('back')}
             size="icon-xs"
             variant="ghost"
           >
@@ -142,19 +169,33 @@ export function ChatHeader({
           <Button
             aria-label="Forward"
             className="size-6 text-muted-foreground"
-            disabled
+            disabled={!canGoForward}
+            onClick={() => onPreviewNavigate('forward')}
             size="icon-xs"
             variant="ghost"
           >
             <ChevronRightIcon className="size-3.5" />
           </Button>
-          <span className="min-w-0 flex-1 truncate px-2 text-xs text-muted-foreground">/</span>
-          <WebPreviewNavigationButton className="size-6 p-0" disabled tooltip="Refresh preview">
+          <Input
+            className="h-6 flex-1 border-0 bg-transparent px-1.5 text-xs outline-none focus-visible:ring-0"
+            value={previewPath}
+            onChange={(event) => onPreviewInput(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                onPreviewNavigate(event.currentTarget.value)
+              }
+            }}
+          />
+          <WebPreviewNavigationButton
+            className="size-6 p-0"
+            onClick={onPreviewRefresh}
+            tooltip="Refresh preview"
+          >
             <RefreshIcon className="size-3.5" />
           </WebPreviewNavigationButton>
           <WebPreviewNavigationButton
             className="size-6 p-0"
-            disabled
+            onClick={onPreviewOpenNewTab}
             tooltip="Open preview in new tab"
           >
             <ExternalIcon className="size-3.5" />
