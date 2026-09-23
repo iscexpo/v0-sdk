@@ -1,6 +1,6 @@
 import type { MessagesSendData } from 'v0'
 import { toV0JsonResponse } from '@/lib/v0-response'
-import { authorizeProxyRequest } from '@/lib/proxy'
+import { authorizeProxyRequest, isValidMessage } from '@/lib/proxy'
 import { v0 } from '@/lib/v0-client'
 
 type SendMessageBody = Pick<MessagesSendData['body'], 'message' | 'modelConfiguration'>
@@ -31,8 +31,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cha
   const { chatId } = await params
   const body = (await request.json().catch(() => null)) as SendMessageBody | null
 
-  if (typeof body?.message !== 'string' || !body.message.trim()) {
-    return Response.json({ message: 'Enter a message.' }, { status: 400 })
+  if (!isValidMessage(body?.message)) {
+    return Response.json({ message: 'Enter a message up to 12,000 characters.' }, { status: 400 })
   }
 
   const result = await v0.messages.sendStream({
