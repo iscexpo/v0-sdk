@@ -8,8 +8,19 @@ import { commandWithPort, detectFramework, resolveWorkspacePath } from './framew
 const PORT = parseInt(process.env.PORT ?? '3100', 10)
 const SANDBOX_ROOT = process.env.SANDBOX_ROOT ?? path.join(process.cwd(), '.sandbox')
 const V0_API_KEY = process.env.V0_API_KEY
+const MAX_BODY_BYTES = 64 * 1024
+const CHAT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 const v0 = V0_API_KEY ? createV0Client({ auth: () => V0_API_KEY }) : undefined
+
+function isValidChatId(value: string) {
+  return CHAT_ID_PATTERN.test(value)
+}
+
+function requireChatId(value: string) {
+  if (!isValidChatId(value)) throw new Error('Invalid sandbox identifier.')
+  return value
+}
 
 interface Sandbox {
   dir: string
@@ -44,7 +55,7 @@ async function syncFiles(chatId: string) {
   const res = await v0.chats.getFiles({ chatId })
   if (res.error) throw new Error(res.error.message)
   const files = res.data.files
-  const dir = getSandbox(chatId).dir
+  const dir = getSandbox(requireChatId(chatId)).dir
   for (const file of files) {
     const filePath = resolveWorkspacePath(dir, file.path)
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
@@ -62,7 +73,7 @@ function detectDevCommand(dir: string) {
 }
 
 function startDevServer(chatId: string): Promise<number> {
-  const s = getSandbox(chatId)
+  const s = getSandbox(requireChatId(chatId))
   if (s.devServer && s.devPort) return Promise.resolve(s.devPort)
 
   return new Promise((resolve, reject) => {
@@ -126,7 +137,7 @@ function startDevServer(chatId: string): Promise<number> {
 }
 
 function startShell(chatId: string) {
-  const s = getSandbox(chatId)
+  const s = getSandbox(requireChatId(chatId))
   const shell = spawn('sh', ['-i'], {
     cwd: s.dir,
     env: { ...process.env, HOME: s.dir },
@@ -185,7 +196,7 @@ const server = http.createServer(async (req, resp) => {
     // Stop
     if (method === 'POST' && /^\/api\/sandboxes\/[^/]+\/stop$/.test(url.pathname)) {
       const chatId = url.pathname.match(/\/api\/sandboxes\/([^/]+)\/stop$/)![1]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       if (s.devServer) { s.devServer.kill() }
       if (s.shell) { s.shell.kill() }
       return json(resp, 200, { stopped: true })
@@ -194,7 +205,7 @@ const server = http.createServer(async (req, resp) => {
     // Status
     if (method === 'GET' && /^\/api\/sandboxes\/[^/]+\/status$/.test(url.pathname)) {
       const chatId = url.pathname.match(/\/api\/sandboxes\/([^/]+)\/status$/)![1]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       return json(resp, 200, {
         dir: s.dir,
         devRunning: s.devServer !== null,
@@ -206,7 +217,7 @@ const server = http.createServer(async (req, resp) => {
     // Logs SSE
     if (method === 'GET' && /^\/api\/sandboxes\/[^/]+\/logs$/.test(url.pathname)) {
       const chatId = url.pathname.match(/\/api\/sandboxes\/([^/]+)\/logs$/)![1]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       s.logs.add(resp)
       resp.writeHead(200, {
         'content-type': 'text/event-stream',
@@ -224,7 +235,7 @@ const server = http.createServer(async (req, resp) => {
     if (previewMatch) {
       const chatId = previewMatch[1]
       const rest = previewMatch[2]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       if (!s.devPort) {
         resp.writeHead(503, { 'content-type': 'text/plain' })
         return resp.end('Dev server not started. POST /api/sandboxes/<chatId>/start first.')
@@ -261,7 +272,7 @@ const server = http.createServer(async (req, resp) => {
     const termStreamMatch = url.pathname.match(/^\/api\/terminal\/([^/]+)\/stream$/)
     if (method === 'GET' && termStreamMatch) {
       const chatId = termStreamMatch[1]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       s.terminalConsumers.add(resp)
       resp.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'connection': 'keep-alive', 'access-control-allow-origin': '*' })
       resp.write(':ok\n\n')
@@ -272,7 +283,7 @@ const server = http.createServer(async (req, resp) => {
     // Terminal input
     if (method === 'POST' && /^\/api\/terminal\/[^/]+\/input$/.test(url.pathname)) {
       const chatId = url.pathname.match(/\/api\/terminal\/([^/]+)\/input$/)![1]
-      const s = getSandbox(chatId)
+      const s = getSandbox(requireChatId(chatId))
       const body = await readBody(req)
       const msg = JSON.parse(body.toString())
       if (s.shell && s.shell.stdin) {
@@ -291,7 +302,16 @@ const server = http.createServer(async (req, resp) => {
 function readBody(req: http.IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (c) => chunks.push(c))
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        req.destroy()
+        reject(new Error('Request body is too large.'))
+        return
+      }
+      chunks.push(chunk)
+    })
     req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
