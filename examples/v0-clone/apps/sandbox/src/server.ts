@@ -62,14 +62,19 @@ function detectDevCommand(dir: string) {
 }
 
 function startDevServer(chatId: string): Promise<number> {
+  const s = getSandbox(chatId)
+  if (s.devServer && s.devPort) return Promise.resolve(s.devPort)
+
   return new Promise((resolve, reject) => {
-    const s = getSandbox(chatId)
     const detected = detectDevCommand(s.dir)
     if (!detected) return reject(new Error('No detectable dev server. Add a dev or start script to package.json.'))
 
     const port = 3400 + Math.floor(Math.random() * 2000)
-    const env = { ...process.env, PORT: String(port) }
-    const child = spawn(detected.info.packageManager === 'npm' ? 'npx' : detected.info.packageManager, commandWithPort(detected.info, port).slice(1), {
+    const env = { ...process.env, PORT: String(port), HOST: '0.0.0.0' }
+    const command = commandWithPort(detected.info, port)
+    const executable = command[0]
+    const args = command.slice(1)
+    const child = spawn(executable, args, {
       cwd: s.dir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -78,36 +83,45 @@ function startDevServer(chatId: string): Promise<number> {
     s.devServer = child
     s.devPort = port
 
-    const output: string[] = []
     const emitLog = (chunk: Buffer) => {
       const text = chunk.toString()
-      output.push(text)
       for (const res of s.logs) {
-        res.write(`data: ${JSON.stringify({ text, kind: 'log' })}\n\n`)
+        res.write(`data: ${JSON.stringify({ text, kind: 'log' })}\\n\\n`)
       }
     }
     child.stdout!.on('data', emitLog)
     child.stderr!.on('data', emitLog)
     child.on('error', (err) => {
-      emitLog(Buffer.from(`[sandbox] dev server error: ${err.message}\n`))
+      emitLog(Buffer.from(`[sandbox] dev server error: ${err.message}\\n`))
     })
     child.on('exit', (code) => {
-      emitLog(Buffer.from(`[sandbox] dev server exited with code ${code}\n`))
+      emitLog(Buffer.from(`[sandbox] dev server exited with code ${code}\\n`))
       if (s.devServer === child) { s.devServer = null; s.devPort = null }
     })
 
-    const timeout = setTimeout(() => {
-      if (s.devPort) return resolve(port)
-      reject(new Error('Dev server failed to start.'))
-    }, 8000)
-
-    const check = setInterval(() => {
-      if (s.devPort) {
-        clearTimeout(timeout)
-        clearInterval(check)
+    let settled = false
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      clearInterval(check)
+      if (error) {
+        if (s.devServer === child) { s.devServer = null; s.devPort = null }
+        child.kill()
+        reject(error)
+      } else {
         resolve(port)
       }
-    }, 500)
+    }
+    const check = setInterval(() => {
+      const request = http.get({ hostname: '127.0.0.1', port, path: '/', timeout: 500 }, (response) => {
+        response.resume()
+        if (response.statusCode && response.statusCode < 500) finish()
+      })
+      request.on('error', () => {})
+      request.on('timeout', () => request.destroy())
+    }, 250)
+    const timeout = setTimeout(() => finish(new Error('Dev server failed to become ready.')), 15000)
   })
 }
 

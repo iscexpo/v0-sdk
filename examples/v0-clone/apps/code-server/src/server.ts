@@ -209,8 +209,10 @@ const server = http.createServer(async (req, resp) => {
 
     // Read file
     if (method === 'GET' && /^\/api\/code\/[^/]+\/files\//.test(url.pathname)) {
-      const chatId = url.pathname.match(/\/api\/code\/([^/]+)\/files\/(.+)$/)!
-      const filePath = path.join(getProject(chatId).dir, decodeURIComponent(chatId[2]))
+      const match = url.pathname.match(/\/api\/code\/([^/]+)\/files\/(.+)$/)!
+      const chatId = match[1]
+      const requestedPath = decodeURIComponent(match[2])
+      const filePath = path.join(getProject(chatId).dir, requestedPath)
       if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
         return json(resp, 404, { error: 'File not found' })
       }
@@ -220,8 +222,10 @@ const server = http.createServer(async (req, resp) => {
 
     // Write file
     if (method === 'PUT' && /^\/api\/code\/[^/]+\/files\//.test(url.pathname)) {
-      const chatId = url.pathname.match(/\/api\/code\/([^/]+)\/files\/(.+)$/)!
-      const filePath = path.join(getProject(chatId).dir, decodeURIComponent(chatId[2]))
+      const match = url.pathname.match(/\/api\/code\/([^/]+)\/files\/(.+)$/)!
+      const chatId = match[1]
+      const requestedPath = decodeURIComponent(match[2])
+      const filePath = path.join(getProject(chatId).dir, requestedPath)
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
       const body = await readBody(req)
       const data = JSON.parse(body.toString())
