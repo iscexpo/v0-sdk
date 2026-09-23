@@ -5,7 +5,7 @@ import { useFiles, useUpdateChatFiles } from '@v0-sdk/react/swr'
 import { use, useState } from 'react'
 import { Loader } from '@/components/ai-elements/loader'
 import { Button } from '@/components/ui/button'
-import { ChevronLeftIcon, ChevronRightIcon, FileIcon, SpinnerIcon } from '@/lib/icons'
+import { ChevronLeftIcon, ChevronRightIcon, FileIcon, FolderIcon, SpinnerIcon } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 type ChatFile = Files['files'][number]
@@ -119,21 +119,25 @@ function CodeEditor({
               {sidebarCollapsed ? 'Expand' : 'Collapse'}
             </button>
           )}
-          {files.map((file) => (
-            <button
-              className={cn(
-                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground',
-                file.path === selectedPath && 'bg-accent text-foreground',
-              )}
-              key={file.path}
-              onClick={() => setSelectedPath(file.path)}
-              title={file.path}
-              type="button"
-            >
-              <FileIcon className="size-3.5 shrink-0" />
-              <span className="truncate">{file.path}</span>
-            </button>
-          ))}
+           {files.map((file) => {
+              const parts = file.path.split('/')
+              const folder = parts.length > 1 ? parts[0] : null
+              return (
+                <button
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground',
+                    file.path === selectedPath && 'bg-accent text-foreground',
+                  )}
+                  key={file.path}
+                  onClick={() => setSelectedPath(file.path)}
+                  title={file.path}
+                  type="button"
+                >
+                  {folder ? <FolderIcon className="size-3.5 shrink-0" /> : <FileIcon className="size-3.5 shrink-0" />}
+                  <span className="truncate">{parts[parts.length - 1]}</span>
+                </button>
+              )
+            })}
         </aside>
 
        <div className="flex min-w-0 flex-1 flex-col">

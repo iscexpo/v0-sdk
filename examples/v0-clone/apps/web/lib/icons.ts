@@ -47,6 +47,7 @@ export {
   Terminal as TerminalIcon,
   TerminalWindow as TerminalWindowIcon,
   Logs as LogsIcon,
+  FolderClosed as FolderIcon,
   Wrench as ToolIcon,
   Robot as AgentIcon,
   Star as StarIcon,
