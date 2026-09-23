@@ -5,6 +5,7 @@ import { ThemeProvider } from 'next-themes'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppShell } from '@/components/layout/app-shell'
 import { PreviewProxyProvider } from '@/components/preview/preview-proxy-provider'
+import { SandboxProvider } from '@/components/preview/sandbox-context'
 import { getPreviewProxyOrigin } from '@/lib/preview-proxy'
 import { getSidebarChats } from '@/lib/sidebar-chats'
 import { getV0ApiKeyStatus } from '@/lib/v0-client'
@@ -25,6 +26,7 @@ export default async function RootLayout({
   const sidebarChats = getSidebarChats()
   const apiKeyStatus = await getV0ApiKeyStatus()
   const previewProxyOrigin = getPreviewProxyOrigin()
+  const sandboxUrl = process.env.V0_SANDBOX_URL ?? null
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -37,11 +39,13 @@ export default async function RootLayout({
           storageKey="theme"
         >
           <PreviewProxyProvider origin={previewProxyOrigin}>
-            <TooltipProvider delayDuration={300}>
-              <AppShell apiKeyStatus={apiKeyStatus} sidebarChats={sidebarChats}>
-                {children}
-              </AppShell>
-            </TooltipProvider>
+            <SandboxProvider url={sandboxUrl}>
+              <TooltipProvider delayDuration={300}>
+                <AppShell apiKeyStatus={apiKeyStatus} sidebarChats={sidebarChats}>
+                  {children}
+                </AppShell>
+              </TooltipProvider>
+            </SandboxProvider>
           </PreviewProxyProvider>
         </ThemeProvider>
       </body>

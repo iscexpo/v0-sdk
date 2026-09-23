@@ -45,6 +45,8 @@ export {
   SettingsGear as SettingsIcon,
   FileText as FileIcon,
   Terminal as TerminalIcon,
+  TerminalWindow as TerminalWindowIcon,
+  Logs as LogsIcon,
   Wrench as ToolIcon,
   Robot as AgentIcon,
   Star as StarIcon,

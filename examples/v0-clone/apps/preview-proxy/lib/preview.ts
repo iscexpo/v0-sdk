@@ -1,5 +1,6 @@
 import { fetchPreview, type ChatsGetPreviewResponse } from 'v0'
 import { ensureTrustedPreviewHost } from '@/lib/trusted-host'
+import { getCloneOrigin } from '@/lib/origins'
 import { getV0ApiKeyFingerprint, v0 } from '@/lib/v0-client'
 
 type Preview = NonNullable<ChatsGetPreviewResponse>
@@ -29,6 +30,21 @@ async function getPreview(chatId: string, cacheKey?: string) {
   return preview
 }
 
+const CONSOLE_BRIDGE = (cloneOrigin: string) => `<script>((function(){var o=${JSON.stringify(cloneOrigin)};function p(t,d){try{parent.postMessage({type:t,level:d.level,message:String(d.message),timestamp:d.timestamp},o)}catch(e){}}var m=['log','info','warn','error','debug'];m.forEach(function(l){var a=console[l];console[l]=function(){var x=Array.prototype.slice.call(arguments);try{a.apply(console,x)}catch(e){}p('console',{level:l,message:x.map(function(v){return typeof v==='object'?JSON.stringify(v):String(v)}).join(' ')})};});window.addEventListener('error',function(e){p('error',{message:e.message||String(e.type)})});window.addEventListener('unhandledrejection',function(e){p('error',{message:String(e.reason)})})})()});</script>`
+
+function isHtmlResponse(response: Response): boolean {
+  const ct = response.headers.get('content-type') ?? ''
+  return response.status === 200 && (ct.includes('text/html') || ct.includes('application/xhtml'))
+}
+
+async function injectConsoleCapture(response: Response, cloneOrigin: string): Promise<Response> {
+  if (!isHtmlResponse(response)) return response
+  const text = await new Response(response.body).text()
+  const script = CONSOLE_BRIDGE(cloneOrigin)
+  const html = text.replace(/<\/head>/i, script + '</head>')
+  return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
+}
+
 export async function proxyPreviewRequest(request: Request, chatId: string, path: string[]) {
   const proxyUrl = new URL(request.url)
   if (path.length === 0) await ensureTrustedPreviewHost(v0, proxyUrl.hostname)
@@ -42,7 +58,7 @@ export async function proxyPreviewRequest(request: Request, chatId: string, path
   )
   fallbackUrl.searchParams.set('returnTo', proxyUrl.pathname + proxyUrl.search)
 
-  return fetchPreview({
+  const result = await fetchPreview({
     request,
     preview,
     path,
@@ -51,4 +67,6 @@ export async function proxyPreviewRequest(request: Request, chatId: string, path
       if (cacheKey) previewCache.delete(cacheKey)
     },
   })
+
+  return injectConsoleCapture(result, getCloneOrigin())
 }
