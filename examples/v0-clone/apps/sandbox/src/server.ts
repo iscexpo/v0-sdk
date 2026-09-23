@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createV0Client } from 'v0'
+import { commandWithPort, detectFramework, resolveWorkspacePath } from './framework.js'
 
 const PORT = parseInt(process.env.PORT ?? '3100', 10)
 const SANDBOX_ROOT = process.env.SANDBOX_ROOT ?? path.join(process.cwd(), '.sandbox')
@@ -45,7 +46,7 @@ async function syncFiles(chatId: string) {
   const files = res.data.files
   const dir = getSandbox(chatId).dir
   for (const file of files) {
-    const filePath = path.join(dir, file.path)
+    const filePath = resolveWorkspacePath(dir, file.path)
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     const content = file.encoding === 'base64'
       ? Buffer.from(file.content, 'base64')
@@ -55,27 +56,20 @@ async function syncFiles(chatId: string) {
   return files
 }
 
-function detectDevCommand(dir: string): { cmd: string[]; framework: string } | null {
-  const pkgPath = path.join(dir, 'package.json')
-  if (!fs.existsSync(pkgPath)) return null
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-  const scripts = pkg.scripts ?? {}
-  const dev = scripts.dev ?? ''
-  if (/\bnext\b/.test(dev)) return { cmd: ['bun', 'run', 'dev'], framework: 'next' }
-  if (/\bvite\b/.test(dev)) return { cmd: ['bun', 'run', 'dev', '--', '--port'], framework: 'vite' }
-  if (/\bnode\b/.test(dev) || scripts.start) return { cmd: ['bun', 'run', 'dev'], framework: 'node' }
-  return null
+function detectDevCommand(dir: string) {
+  const info = detectFramework(dir)
+  return info ? { info, cmd: info.devCommand } : null
 }
 
 function startDevServer(chatId: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = getSandbox(chatId)
     const detected = detectDevCommand(s.dir)
-    if (!detected) return reject(new Error('No detectable dev server. Add a dev script to package.json.'))
+    if (!detected) return reject(new Error('No detectable dev server. Add a dev or start script to package.json.'))
 
     const port = 3400 + Math.floor(Math.random() * 2000)
     const env = { ...process.env, PORT: String(port) }
-    const child = spawn('bun', ['run', 'dev'], {
+    const child = spawn(detected.info.packageManager === 'npm' ? 'npx' : detected.info.packageManager, commandWithPort(detected.info, port).slice(1), {
       cwd: s.dir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
